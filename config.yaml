@@ -1,0 +1,23 @@
+profiles:
+  gpu:
+    llm_base_url: "http://vllm:8000/v1"
+    llm_model: "Qwen2.5-7B-Instruct-AWQ"
+  cpu:
+    llm_base_url: "http://ollama:11434/v1"
+    llm_model: "qwen2.5:3b"
+
+chunking:
+  target_tokens: 400
+  overlap_tokens: 50
+
+retrieval:
+  top_k: 20
+  top_n: 5
+
+graph:
+  alpha: 0.7
+  beta: 0.2
+  gamma: 0.1
+
+rerank:
+  enabled: true

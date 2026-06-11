@@ -28,11 +28,9 @@ data/parsed/
 data/exports/
 
 # Evaluation golden set (contains personal knowledge)
-# The committed synthetic sample under eval/golden_sample/ is intentionally excluded
-eval/golden/real/
-eval/golden/*.jsonl
-eval/golden/*.json
-!eval/golden_sample/**
+# eval/golden_sample/ is the committed synthetic-only sample; everything else under golden/ is ignored
+eval/golden/*
+!eval/golden/.gitkeep
 
 # ===========================================================================
 # Vector database storage
