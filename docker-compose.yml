@@ -62,13 +62,25 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
+    # First-run model pull is automatic: serve, wait for readiness, then pull.
+    # $$ defers expansion to the container shell (LLM_MODEL from its env).
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        echo "[ollama] ensuring model present: $$LLM_MODEL"
+        ollama pull "$$LLM_MODEL"
+        wait
     healthcheck:
-      # The model itself is pulled in phase 0.4; `ollama list` confirms the server is up.
-      test: ["CMD", "ollama", "list"]
+      # Healthy only once the model is actually present, not merely serving.
+      test: ["CMD-SHELL", "ollama list | grep -q \"$$LLM_MODEL\""]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 300s
 
 volumes:
   qdrant_storage:
