@@ -1,0 +1,76 @@
+# Base stack. Always-on: qdrant. Profiled serving: vllm (gpu) | ollama (cpu).
+# The api and frontend services join this file in phases 2 and 3.
+# Profile selection and endpoint resolution are handled by scripts/detect.sh;
+# bring the stack up with `make run`, not `docker compose up` directly.
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    healthcheck:
+      # qdrant images ship bash but not curl; a TCP open check is version-robust.
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    profiles: ["gpu"]
+    restart: unless-stopped
+    ipc: host
+    ports:
+      - "8000:8000"
+    volumes:
+      - vllm_cache:/root/.cache/huggingface
+    environment:
+      HF_HOME: /root/.cache/huggingface
+    command:
+      - --model
+      - ${LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct-AWQ}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["gpu"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["cpu"]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      # The model itself is pulled in phase 0.4; `ollama list` confirms the server is up.
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  qdrant_storage:
+  vllm_cache:
+  ollama_data:

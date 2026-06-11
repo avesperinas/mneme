@@ -1,7 +1,7 @@
 profiles:
   gpu:
     llm_base_url: "http://vllm:8000/v1"
-    llm_model: "Qwen2.5-7B-Instruct-AWQ"
+    llm_model: "Qwen/Qwen2.5-7B-Instruct-AWQ"
   cpu:
     llm_base_url: "http://ollama:11434/v1"
     llm_model: "qwen2.5:3b"

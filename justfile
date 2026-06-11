@@ -15,10 +15,6 @@ lint:
 test:
     uv run pytest
 
-# Bring up the full stack (GPU/CPU auto-detected)
-run:
-    bash scripts/detect.sh
-
 # Send a one-shot prompt through LLMClient
 chat +prompt:
     uv run python -m mneme.llm.chat "{{prompt}}"
