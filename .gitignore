@@ -1,0 +1,118 @@
+# ===========================================================================
+# Secrets and environment -- NEVER commit real values
+# ===========================================================================
+.env
+.env.local
+.env.*.local
+
+# Keys, certs, credentials
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+secrets.yaml
+secrets.yml
+
+# ===========================================================================
+# Personal data -- vault contents and everything derived from them
+# ===========================================================================
+# Obsidian vault (set VAULT_PATH in .env; never put the real path here)
+vault/
+*.vault/
+
+# Parsed documents, chunks, embeddings produced from the real vault
+data/chunks/
+data/embeddings/
+data/parsed/
+data/exports/
+
+# Evaluation golden set (contains personal knowledge)
+# eval/golden_sample/ is the committed synthetic-only sample; everything else under golden/ is ignored
+eval/golden/*
+!eval/golden/.gitkeep
+
+# ===========================================================================
+# Vector database storage
+# ===========================================================================
+qdrant_storage/
+qdrant_snapshots/
+qdrant_data/
+
+# ===========================================================================
+# Model and weight caches
+# ===========================================================================
+model_cache/
+hf_cache/
+huggingface_cache/
+models/
+*.safetensors
+*.gguf
+
+# ===========================================================================
+# Langfuse and observability data
+# ===========================================================================
+langfuse_data/
+langfuse_pgdata/
+traces/
+clickhouse_data/
+postgres_data/
+pgdata/
+redis_data/
+
+# ===========================================================================
+# Python
+# ===========================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.log
+*.pot
+pip-wheel-metadata/
+
+# ===========================================================================
+# Node / Frontend
+# ===========================================================================
+node_modules/
+.npm
+.pnp
+.pnp.js
+frontend/dist/
+frontend/.vite/
+
+# ===========================================================================
+# macOS
+# ===========================================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# ===========================================================================
+# IDE and editors
+# ===========================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
