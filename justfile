@@ -1,3 +1,5 @@
+set dotenv-load := true
+
 default:
     @just --list
 
@@ -14,6 +16,10 @@ lint:
 # Run the test suite
 test:
     uv run pytest
+
+# Ingest a vault: parse -> chunk -> graph, print stats (uses $VAULT_PATH if --vault omitted)
+index *args:
+    uv run python -m mneme_ingest.index {{args}}
 
 # Send a one-shot prompt through LLMClient
 chat +prompt:
