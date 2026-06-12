@@ -1,7 +1,6 @@
 """Core ingestion data contracts (spec section 3.3).
 
-Document is produced by the parser (1.1). Chunk is produced by the chunker
-(1.2) and added here when that sub-phase lands.
+Document is produced by the parser (1.1); Chunk by the structural chunker (1.2).
 """
 
 from __future__ import annotations
@@ -18,6 +17,18 @@ class Document:
     tags: list[str]
     wikilinks: list[str]  # outgoing link targets (note titles/paths), deduped
     mtime: float
+
+
+@dataclass(slots=True)
+class Chunk:
+    id: str  # f"{document_id}::{ordinal}"
+    document_id: str
+    rel_path: str
+    heading_path: list[str]  # ancestor headings, always non-empty
+    text: str
+    tags: list[str]
+    ordinal: int
+    token_count: int
 
 
 @dataclass(slots=True)
