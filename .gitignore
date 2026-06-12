@@ -27,6 +27,11 @@ data/embeddings/
 data/parsed/
 data/exports/
 
+# Persisted link graph / any SQLite db derived from the real vault
+*.db
+*.sqlite
+*.sqlite3
+
 # Evaluation golden set (contains personal knowledge)
 # eval/golden_sample/ is the committed synthetic-only sample; everything else under golden/ is ignored
 eval/golden/*
