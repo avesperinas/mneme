@@ -7,7 +7,12 @@ dependencies = [
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
     "pyyaml>=6.0.0",
+    "qdrant-client>=1.10.0",
+    "mneme-ingest",
 ]
+
+[tool.uv.sources]
+mneme-ingest = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
