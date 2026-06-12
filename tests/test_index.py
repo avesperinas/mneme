@@ -59,3 +59,19 @@ def test_main_prints_report(capsys):
 def test_main_errors_on_missing_vault(tmp_path):
     with pytest.raises(SystemExit):
         main(["--vault", str(tmp_path / "does-not-exist")])
+
+
+def test_main_indexes_to_qdrant_when_url_given(capsys):
+    main(
+        [
+            "--vault",
+            str(VAULT),
+            "--index",
+            "--qdrant-url",
+            ":memory:",
+            "--embedder",
+            "hash",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "indexed:          7 points" in out
