@@ -1,5 +1,8 @@
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { streamQuery } from "./api";
+import { CopyButton } from "./components/CopyButton";
 import { SourceCard } from "./components/SourceCard";
 import type { ChatMessage } from "./types";
 
@@ -53,7 +56,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
+      <header className="app-header">
         <h1>Mneme</h1>
         <p className="tagline">Answers grounded in your notes.</p>
       </header>
@@ -64,19 +67,34 @@ export default function App() {
         )}
         {messages.map((m) => (
           <article key={m.id} className="turn">
-            <div className="question">{m.question}</div>
-            <div className="answer">
-              {m.answer}
-              {m.streaming && <span className="cursor">▍</span>}
-            </div>
-            {m.error && <div className="error">{m.error}</div>}
-            {m.sources.length > 0 && (
-              <div className="sources">
-                {m.sources.map((s, i) => (
-                  <SourceCard key={`${m.id}-${i}`} source={s} />
-                ))}
+            <div className="bubble user">{m.question}</div>
+
+            <div className="bubble assistant">
+              <div className="assistant-head">
+                <span className="role">Mneme</span>
+                {!m.streaming && m.answer && <CopyButton text={m.answer} />}
               </div>
-            )}
+
+              <div className="markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {m.answer}
+                </ReactMarkdown>
+                {m.streaming && <span className="cursor">▍</span>}
+              </div>
+
+              {m.error && <div className="error">{m.error}</div>}
+
+              {m.sources.length > 0 && (
+                <div className="sources">
+                  <div className="sources-label">Sources</div>
+                  <div className="sources-grid">
+                    {m.sources.map((s, i) => (
+                      <SourceCard key={`${m.id}-${i}`} source={s} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </article>
         ))}
       </main>
