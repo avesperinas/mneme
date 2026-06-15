@@ -15,6 +15,7 @@ import json
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from mneme.api.schemas import HealthResponse, QueryRequest, QueryResponse, Source
@@ -65,11 +66,13 @@ def create_app(
     qdrant_client: QdrantClient | None = None,
     llm_client: LLMClient | None = None,
     collection: str | None = None,
+    cors_origins: list[str] | None = None,
     top_k: int = 5,
     min_score: float = 0.0,
 ) -> FastAPI:
     settings = settings or get_settings()
     collection = collection or settings.qdrant_collection
+    cors_origins = cors_origins if cors_origins is not None else settings.cors_origins
 
     if embedder is None:
         from mneme_ingest.embed import BGEM3Embedder
@@ -87,6 +90,12 @@ def create_app(
         )
 
     app = FastAPI(title="Mneme")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.post("/query", response_model=QueryResponse)
     async def query(request: QueryRequest) -> QueryResponse:

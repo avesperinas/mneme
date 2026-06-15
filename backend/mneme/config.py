@@ -71,6 +71,13 @@ class Settings(BaseSettings):
 
     vault_path: str = ""
 
+    # Comma-separated browser origins allowed to call the API (frontend dev server).
+    api_cors_origins: str = "http://localhost:5173"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.api_cors_origins.split(",") if o.strip()]
+
     @model_validator(mode="after")
     def _resolve(self) -> Settings:
         profile = self.serving_profile or "cpu"

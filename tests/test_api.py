@@ -73,6 +73,24 @@ def test_query_out_of_domain_says_not_found_with_no_sources():
     assert body["sources"] == []
 
 
+def test_cors_allows_configured_frontend_origin():
+    app = create_app(
+        embedder=HashEmbedder(dim=32),
+        qdrant_client=make_client(":memory:"),
+        llm_client=FakeLLM("x"),
+        collection="mneme",
+        cors_origins=["http://localhost:5173"],
+    )
+    resp = TestClient(app).options(
+        "/query",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
 def test_health_reports_components():
     client = _client(chunks=_fixture_chunks())
     body = client.get("/health").json()
