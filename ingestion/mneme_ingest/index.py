@@ -114,6 +114,26 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="optional SQLite path to persist the link graph",
     )
+    parser.add_argument(
+        "--index",
+        action="store_true",
+        help="embed chunks and upsert them to Qdrant (otherwise report only)",
+    )
+    parser.add_argument(
+        "--qdrant-url",
+        default=os.environ.get("QDRANT_URL"),
+        help="Qdrant URL (':memory:' for a local store); defaults to $QDRANT_URL",
+    )
+    parser.add_argument(
+        "--collection",
+        default=os.environ.get("QDRANT_COLLECTION", "mneme"),
+    )
+    parser.add_argument(
+        "--embedder",
+        choices=["bge", "hash"],
+        default="bge",
+        help="bge = real BGE-M3 (needs the embed group); hash = offline double",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -132,6 +152,25 @@ def main(argv: list[str] | None = None) -> None:
         graph_db=args.graph_db,
     )
     print(format_report(result, args.vault))
+
+    if args.index:
+        if not args.qdrant_url:
+            parser.error("--index requires --qdrant-url or $QDRANT_URL")
+
+        from mneme_ingest.embed import BGEM3Embedder, HashEmbedder
+        from mneme_ingest.vectorstore import index_chunks, make_client
+
+        embedder = (
+            HashEmbedder()
+            if args.embedder == "hash"
+            else BGEM3Embedder(device=os.environ.get("EMBED_DEVICE", "auto"))
+        )
+        client = make_client(args.qdrant_url)
+        written = index_chunks(client, args.collection, result.chunks, embedder)
+        print(
+            f"  indexed:          {written} points -> "
+            f"{args.collection} @ {args.qdrant_url}"
+        )
 
 
 if __name__ == "__main__":
