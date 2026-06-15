@@ -9,7 +9,6 @@ import type { ChatMessage } from "./types";
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   function patch(id: string, change: Partial<ChatMessage>) {
@@ -20,16 +19,21 @@ export default function App() {
 
   async function ask() {
     const question = input.trim();
-    if (!question || busy) return;
+    if (!question) return;
+
+    // Claim ownership before aborting any in-flight stream, so the superseded
+    // request's cleanup does not clobber this one's state.
+    const controller = new AbortController();
+    const previous = abortRef.current;
+    abortRef.current = controller;
+    if (previous) previous.abort();
+
     const id = crypto.randomUUID();
     setMessages((prev) => [
       ...prev,
       { id, question, answer: "", sources: [], streaming: true },
     ]);
     setInput("");
-    setBusy(true);
-    const controller = new AbortController();
-    abortRef.current = controller;
 
     try {
       for await (const ev of streamQuery(question, controller.signal)) {
@@ -46,11 +50,15 @@ export default function App() {
         }
       }
     } catch (err) {
-      patch(id, { error: err instanceof Error ? err.message : String(err) });
+      // A stream aborted because a newer question superseded it is not an error.
+      if (!controller.signal.aborted) {
+        patch(id, { error: err instanceof Error ? err.message : String(err) });
+      }
     } finally {
       patch(id, { streaming: false });
-      setBusy(false);
-      abortRef.current = null;
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
     }
   }
 
@@ -110,10 +118,9 @@ export default function App() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask your notes…"
-          disabled={busy}
         />
-        <button type="submit" disabled={busy || !input.trim()}>
-          {busy ? "…" : "Ask"}
+        <button type="submit" disabled={!input.trim()}>
+          Ask
         </button>
       </form>
     </div>
