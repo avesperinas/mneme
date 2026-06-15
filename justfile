@@ -28,10 +28,16 @@ serve:
 
 # Ask the running API a question (POST /query at $API_BASE_URL)
 ask +question:
-    @curl -s "${API_BASE_URL:-http://localhost:8001}/query" \
-        -H 'content-type: application/json' \
-        --data "$(python3 -c 'import json,sys; print(json.dumps({"question": sys.argv[1]}))' "{{question}}")" \
-        | python3 -m json.tool
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url="${API_BASE_URL:-http://localhost:8001}/query"
+    payload="$(python3 -c 'import json,sys; print(json.dumps({"question": sys.argv[1]}))' "{{question}}")"
+    if ! resp="$(curl -sS --connect-timeout 3 --max-time 180 "$url" \
+        -H 'content-type: application/json' --data "$payload")"; then
+        echo "Request to $url failed or timed out. Is the API up (just serve) and reachable?" >&2
+        exit 1
+    fi
+    printf '%s\n' "$resp" | python3 -m json.tool
 
 # Send a one-shot prompt through LLMClient
 chat +prompt:
