@@ -23,7 +23,15 @@ index *args:
 
 # Serve the API locally (builds real BGE-M3 on startup; needs Qdrant + the embed group)
 serve:
-    uv run uvicorn --factory mneme.api.app:create_app --host 0.0.0.0 --port 8001
+    uv run uvicorn --factory mneme.api.app:create_app \
+        --host ${API_HOST:-0.0.0.0} --port ${API_PORT:-8001}
+
+# Ask the running API a question (POST /query at $API_BASE_URL)
+ask +question:
+    @curl -s "${API_BASE_URL:-http://localhost:8001}/query" \
+        -H 'content-type: application/json' \
+        --data "$(python3 -c 'import json,sys; print(json.dumps({"question": sys.argv[1]}))' "{{question}}")" \
+        | python3 -m json.tool
 
 # Send a one-shot prompt through LLMClient
 chat +prompt:
