@@ -76,3 +76,47 @@ def test_health_reports_components():
     assert body["qdrant"] is True
     assert body["llm"]
     assert body["embed"].startswith("dim=")
+
+
+class _BrokenQdrant:
+    def query_points(self, *a, **k):
+        raise ConnectionError("could not connect to qdrant")
+
+    def get_collections(self):
+        raise ConnectionError("could not connect to qdrant")
+
+
+class _BrokenLLM:
+    async def complete(self, messages, **opts):
+        raise RuntimeError("model not pulled")
+
+    async def stream(self, messages, **opts):
+        yield ""
+
+
+def test_unreachable_qdrant_returns_503():
+    app = create_app(
+        embedder=HashEmbedder(dim=32),
+        qdrant_client=_BrokenQdrant(),
+        llm_client=FakeLLM("unused"),
+        collection="mneme",
+    )
+    resp = TestClient(app).post("/query", json={"question": "anything?"})
+    assert resp.status_code == 503
+    assert "vector store unavailable" in resp.json()["detail"]
+
+
+def test_failing_llm_returns_502():
+    embedder = HashEmbedder(dim=32)
+    qdrant = make_client(":memory:")
+    index_chunks(qdrant, "mneme", _fixture_chunks(), embedder)
+    app = create_app(
+        embedder=embedder,
+        qdrant_client=qdrant,
+        llm_client=_BrokenLLM(),
+        collection="mneme",
+        top_k=3,
+    )
+    resp = TestClient(app).post("/query", json={"question": "how does search work?"})
+    assert resp.status_code == 502
+    assert "LLM request failed" in resp.json()["detail"]

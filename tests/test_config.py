@@ -16,6 +16,7 @@ def test_config_yaml_missing_key_is_empty():
 def test_to_host_url_rewrites_in_cluster_hosts():
     assert to_host_url("http://ollama:11434/v1") == "http://localhost:11434/v1"
     assert to_host_url("http://vllm:8000/v1") == "http://localhost:8000/v1"
+    assert to_host_url("http://qdrant:6333") == "http://localhost:6333"
 
 
 def test_to_host_url_leaves_external_hosts_untouched():
@@ -50,3 +51,15 @@ def test_explicit_base_url_overrides_and_skips_rewrite():
     # An explicit value is honoured verbatim, no localhost rewrite.
     assert settings.llm_base_url == "http://ollama:11434/v1"
     assert settings.llm_model == "custom"
+
+
+def test_empty_qdrant_url_resolves_to_localhost(monkeypatch):
+    monkeypatch.delenv("QDRANT_URL", raising=False)
+    settings = Settings(_env_file=None)
+    # host tooling reaches the published port, not the in-cluster name
+    assert settings.qdrant_url == "http://localhost:6333"
+
+
+def test_explicit_qdrant_url_is_honoured():
+    settings = Settings(_env_file=None, qdrant_url="http://qdrant:6333")
+    assert settings.qdrant_url == "http://qdrant:6333"

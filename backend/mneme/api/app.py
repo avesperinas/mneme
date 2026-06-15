@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from mneme.api.schemas import HealthResponse, QueryRequest, QueryResponse, Source
 from mneme.config import Settings, get_settings
@@ -67,12 +67,25 @@ def create_app(
 
     @app.post("/query", response_model=QueryResponse)
     async def query(request: QueryRequest) -> QueryResponse:
-        retrieved = dense_search(
-            qdrant_client, collection, request.question, embedder, top_k=top_k
-        )
-        answer = await synthesize_answer(
-            llm_client, request.question, retrieved, min_score=min_score
-        )
+        # Translate infrastructure failures into clear HTTP errors rather than an
+        # opaque 500: 503 when the vector store is unreachable, 502 when the LLM
+        # call fails (e.g. engine down or model not pulled).
+        try:
+            retrieved = dense_search(
+                qdrant_client, collection, request.question, embedder, top_k=top_k
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503, detail=f"vector store unavailable: {exc}"
+            ) from exc
+        try:
+            answer = await synthesize_answer(
+                llm_client, request.question, retrieved, min_score=min_score
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502, detail=f"LLM request failed: {exc}"
+            ) from exc
         sources = [
             Source(
                 rel_path=item.chunk.rel_path,
