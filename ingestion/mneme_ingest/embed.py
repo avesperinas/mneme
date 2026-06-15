@@ -14,10 +14,19 @@ The same Embedder is used to index chunks (ingestion) and to embed queries
 from __future__ import annotations
 
 import hashlib
+import re
 import struct
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 BGE_M3_DENSE_DIM = 1024
+_SPARSE_DIM = 100_000  # index space for the hash-based sparse double
+
+
+@dataclass(slots=True)
+class SparseVector:
+    indices: list[int]
+    values: list[float]
 
 
 @runtime_checkable
@@ -25,6 +34,11 @@ class Embedder(Protocol):
     dim: int
 
     def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+    # Dense and sparse in one pass (BGE-M3 produces both); used for hybrid.
+    def embed_both(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]]: ...
 
 
 class HashEmbedder:
@@ -46,8 +60,21 @@ class HashEmbedder:
             counter += 1
         return values
 
+    def _sparse(self, text: str) -> SparseVector:
+        # Word-keyed sparse, so exact tokens shared by query and chunk overlap.
+        weights: dict[int, float] = {}
+        for word in set(re.findall(r"\w+", text.lower())):
+            index = int.from_bytes(hashlib.sha256(word.encode()).digest()[:4], "little")
+            weights[index % _SPARSE_DIM] = 1.0
+        return SparseVector(indices=list(weights), values=list(weights.values()))
+
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [self._vector(text) for text in texts]
+
+    def embed_both(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]]:
+        return [self._vector(t) for t in texts], [self._sparse(t) for t in texts]
 
 
 def _resolve_device(device: str) -> str:
@@ -89,3 +116,22 @@ class BGEM3Embedder:
             return_colbert_vecs=False,
         )
         return [vector.tolist() for vector in output["dense_vecs"]]
+
+    def embed_both(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]]:
+        output = self._model.encode(
+            texts,
+            return_dense=True,
+            return_sparse=True,
+            return_colbert_vecs=False,
+        )
+        dense = [vector.tolist() for vector in output["dense_vecs"]]
+        sparse = [
+            SparseVector(
+                indices=[int(token) for token in weights],
+                values=[float(weight) for weight in weights.values()],
+            )
+            for weights in output["lexical_weights"]
+        ]
+        return dense, sparse

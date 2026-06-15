@@ -22,15 +22,13 @@ class RetrievedChunk:
     score: float
 
 
-def dense_search(
+def query_dense(
     client: QdrantClient,
     collection: str,
-    query: str,
-    embedder: Embedder,
-    *,
-    top_k: int = 5,
+    vector: list[float],
+    top_k: int,
 ) -> list[RetrievedChunk]:
-    vector = embedder.embed([query])[0]
+    """Dense search from an already-embedded query vector."""
     response = client.query_points(
         collection,
         query=vector,
@@ -42,6 +40,17 @@ def dense_search(
         RetrievedChunk(chunk=payload_to_chunk(point.payload), score=point.score)
         for point in response.points
     ]
+
+
+def dense_search(
+    client: QdrantClient,
+    collection: str,
+    query: str,
+    embedder: Embedder,
+    *,
+    top_k: int = 5,
+) -> list[RetrievedChunk]:
+    return query_dense(client, collection, embedder.embed([query])[0], top_k)
 
 
 def format_context(retrieved: list[RetrievedChunk]) -> str:
