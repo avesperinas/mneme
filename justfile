@@ -26,6 +26,30 @@ serve:
     uv run uvicorn --factory mneme.api.app:create_app \
         --host ${API_HOST:-0.0.0.0} --port ${API_PORT:-8001}
 
+# Prereqs: `uv sync --group embed`, frontend deps installed, and an indexed vault.
+# Run the full local stack: Qdrant + API + frontend. Ctrl+C stops everything.
+dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker compose up -d qdrant \
+        || echo "[dev] warning: could not start Qdrant (is Docker running?)"
+    if [ ! -d frontend/node_modules ]; then
+        echo "[dev] installing frontend deps..."
+        npm --prefix frontend install
+    fi
+    api_port="${API_PORT:-8001}"
+    echo "[dev] API -> http://localhost:${api_port}   frontend -> http://localhost:5173"
+    echo "[dev] Ctrl+C to stop both."
+    pids=""
+    cleanup() { trap - INT TERM EXIT; echo; echo "[dev] stopping..."; kill $pids 2>/dev/null || true; }
+    trap cleanup INT TERM EXIT
+    uv run uvicorn --factory mneme.api.app:create_app \
+        --host "${API_HOST:-0.0.0.0}" --port "$api_port" &
+    pids="$pids $!"
+    npm --prefix frontend run dev &
+    pids="$pids $!"
+    wait
+
 # Ask the running API a question (POST /query at $API_BASE_URL)
 ask +question:
     #!/usr/bin/env bash

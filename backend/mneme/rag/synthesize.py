@@ -9,6 +9,7 @@ answer for an out-of-domain question (spec 2.3 GUARDRAIL).
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from mneme.llm.client import LLMClient, Message
@@ -41,6 +42,13 @@ def build_messages(question: str, context: str) -> list[Message]:
     ]
 
 
+def select_relevant(
+    retrieved: list[RetrievedChunk], min_score: float = 0.0
+) -> list[RetrievedChunk]:
+    """Chunks at or above the score floor; empty means out-of-domain."""
+    return [item for item in retrieved if item.score >= min_score]
+
+
 async def synthesize_answer(
     llm: LLMClient,
     question: str,
@@ -48,9 +56,18 @@ async def synthesize_answer(
     *,
     min_score: float = 0.0,
 ) -> Answer:
-    relevant = [item for item in retrieved if item.score >= min_score]
+    relevant = select_relevant(retrieved, min_score)
     if not relevant:
         return Answer(NOT_FOUND_MESSAGE, [])
     context = format_context(relevant)
     text = await llm.complete(build_messages(question, context))
     return Answer(text, relevant)
+
+
+async def stream_answer_tokens(
+    llm: LLMClient, question: str, relevant: list[RetrievedChunk]
+) -> AsyncIterator[str]:
+    """Stream synthesis tokens for already-selected relevant chunks."""
+    context = format_context(relevant)
+    async for token in llm.stream(build_messages(question, context)):
+        yield token
