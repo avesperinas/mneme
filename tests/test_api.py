@@ -1,3 +1,4 @@
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -20,7 +21,10 @@ class FakeLLM:
         return self.reply
 
     async def stream(self, messages, **opts) -> AsyncIterator[str]:
-        yield self.reply
+        # split into several tokens so streaming is genuinely incremental
+        parts = self.reply.split(" ")
+        for index, part in enumerate(parts):
+            yield part if index == len(parts) - 1 else part + " "
 
 
 def _fixture_chunks():
@@ -120,3 +124,76 @@ def test_failing_llm_returns_502():
     resp = TestClient(app).post("/query", json={"question": "how does search work?"})
     assert resp.status_code == 502
     assert "LLM request failed" in resp.json()["detail"]
+
+
+# --- streaming (3.1) ------------------------------------------------------
+
+
+def _parse_sse(text: str) -> list[dict]:
+    events = []
+    for block in text.strip().split("\n\n"):
+        event = {}
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                event["event"] = line[len("event:") :].strip()
+            elif line.startswith("data:"):
+                event["data"] = line[len("data:") :].strip()
+        if event:
+            events.append(event)
+    return events
+
+
+class _StreamBrokenLLM:
+    async def complete(self, messages, **opts):
+        raise RuntimeError("engine down")
+
+    async def stream(self, messages, **opts):
+        raise RuntimeError("engine down")
+        yield ""  # unreachable; makes this an async generator
+
+
+def test_stream_yields_tokens_then_sources():
+    client = _client(
+        chunks=_fixture_chunks(), llm_reply="Hybrid search fuses rankings."
+    )
+    resp = client.get("/query/stream", params={"question": "how does hybrid work?"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+
+    events = _parse_sse(resp.text)
+    tokens = [json.loads(e["data"])["text"] for e in events if e["event"] == "token"]
+    assert len(tokens) > 1  # genuinely incremental, not one blob
+    assert "".join(tokens) == "Hybrid search fuses rankings."
+    # the sources event is last, after all tokens
+    assert events[-1]["event"] == "sources"
+    payload = json.loads(events[-1]["data"])
+    assert payload["mode"] == "naive"
+    assert len(payload["sources"]) == 3
+
+
+def test_stream_out_of_domain_emits_not_found_and_no_sources():
+    client = _client(chunks=[])
+    resp = client.get("/query/stream", params={"question": "capital of France?"})
+    events = _parse_sse(resp.text)
+    tokens = [json.loads(e["data"])["text"] for e in events if e["event"] == "token"]
+    assert tokens == [NOT_FOUND_MESSAGE]
+    assert json.loads(events[-1]["data"])["sources"] == []
+
+
+def test_stream_llm_failure_emits_error_event():
+    embedder = HashEmbedder(dim=32)
+    qdrant = make_client(":memory:")
+    index_chunks(qdrant, "mneme", _fixture_chunks(), embedder)
+    app = create_app(
+        embedder=embedder,
+        qdrant_client=qdrant,
+        llm_client=_StreamBrokenLLM(),
+        collection="mneme",
+        top_k=3,
+    )
+    resp = TestClient(app).get(
+        "/query/stream", params={"question": "how does it work?"}
+    )
+    assert resp.status_code == 200  # stream opened; failure is in-band
+    events = _parse_sse(resp.text)
+    assert any(e["event"] == "error" for e in events)
