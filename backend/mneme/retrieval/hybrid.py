@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from mneme_ingest.embed import Embedder
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 
 from mneme.retrieval.dense import RetrievedChunk, query_dense
 from mneme.retrieval.sparse import query_sparse
@@ -47,8 +47,13 @@ def hybrid_search(
     candidate_k: int = 20,
     top_k: int = 5,
     rrf_k: int = 60,
+    query_filter: models.Filter | None = None,
 ) -> list[RetrievedChunk]:
     dense_vectors, sparse_vectors = embedder.embed_both([query])
-    dense_results = query_dense(client, collection, dense_vectors[0], candidate_k)
-    sparse_results = query_sparse(client, collection, sparse_vectors[0], candidate_k)
+    dense_results = query_dense(
+        client, collection, dense_vectors[0], candidate_k, query_filter
+    )
+    sparse_results = query_sparse(
+        client, collection, sparse_vectors[0], candidate_k, query_filter
+    )
     return reciprocal_rank_fusion([dense_results, sparse_results], k=rrf_k, top_k=top_k)

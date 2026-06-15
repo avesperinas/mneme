@@ -121,6 +121,7 @@ def create_app(
                 request.question,
                 embedder,
                 reranker=active_reranker,
+                filters=request.filters,
                 candidate_k=candidate_k,
                 top_k=top_k,
             )

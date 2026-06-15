@@ -18,6 +18,7 @@ def query_sparse(
     collection: str,
     sparse: SparseVector,
     top_k: int,
+    query_filter: models.Filter | None = None,
 ) -> list[RetrievedChunk]:
     """Sparse search from an already-embedded sparse query vector."""
     response = client.query_points(
@@ -26,6 +27,7 @@ def query_sparse(
         using=SPARSE_VECTOR,
         limit=top_k,
         with_payload=True,
+        query_filter=query_filter,
     )
     return [
         RetrievedChunk(chunk=payload_to_chunk(point.payload), score=point.score)

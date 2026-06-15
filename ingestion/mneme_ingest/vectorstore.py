@@ -43,10 +43,13 @@ def embedding_text(chunk: Chunk) -> str:
 
 
 def chunk_to_payload(chunk: Chunk) -> dict:
+    rel_path = chunk.rel_path
     return {
         "chunk_id": chunk.id,
         "document_id": chunk.document_id,
-        "rel_path": chunk.rel_path,
+        "rel_path": rel_path,
+        # parent folder (posix), for metadata filtering; "" for vault-root notes
+        "folder": rel_path.rsplit("/", 1)[0] if "/" in rel_path else "",
         "heading_path": chunk.heading_path,
         "text": chunk.text,
         "tags": chunk.tags,
