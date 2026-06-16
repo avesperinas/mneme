@@ -45,6 +45,8 @@ def _client(*, chunks, llm_reply="Grounded answer [Retrieval.md]."):
         qdrant_client=qdrant,
         llm_client=FakeLLM(llm_reply),
         collection="mneme",
+        default_mode="naive",
+        rerank=False,
         top_k=3,
     )
     return TestClient(app)
@@ -78,6 +80,7 @@ def test_cors_allows_configured_frontend_origin():
         embedder=HashEmbedder(dim=32),
         qdrant_client=make_client(":memory:"),
         llm_client=FakeLLM("x"),
+        rerank=False,
         collection="mneme",
         cors_origins=["http://localhost:5173"],
     )
@@ -121,11 +124,12 @@ def test_unreachable_qdrant_returns_503():
         embedder=HashEmbedder(dim=32),
         qdrant_client=_BrokenQdrant(),
         llm_client=FakeLLM("unused"),
+        rerank=False,
         collection="mneme",
     )
     resp = TestClient(app).post("/query", json={"question": "anything?"})
     assert resp.status_code == 503
-    assert "vector store unavailable" in resp.json()["detail"]
+    assert "retrieval failed" in resp.json()["detail"]
 
 
 def test_failing_llm_returns_502():
@@ -136,6 +140,7 @@ def test_failing_llm_returns_502():
         embedder=embedder,
         qdrant_client=qdrant,
         llm_client=_BrokenLLM(),
+        rerank=False,
         collection="mneme",
         top_k=3,
     )
@@ -206,6 +211,7 @@ def test_stream_llm_failure_emits_error_event():
         embedder=embedder,
         qdrant_client=qdrant,
         llm_client=_StreamBrokenLLM(),
+        rerank=False,
         collection="mneme",
         top_k=3,
     )

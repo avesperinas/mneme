@@ -17,10 +17,11 @@ from collections.abc import Iterable, Iterator
 
 from qdrant_client import QdrantClient, models
 
-from mneme_ingest.embed import Embedder
+from mneme_ingest.embed import Embedder, SparseVector
 from mneme_ingest.models import Chunk
 
 DENSE_VECTOR = "dense"
+SPARSE_VECTOR = "sparse"
 _POINT_NAMESPACE = uuid.UUID("6f9619ff-8b86-d011-b42d-00c04fc964ff")
 
 
@@ -42,10 +43,13 @@ def embedding_text(chunk: Chunk) -> str:
 
 
 def chunk_to_payload(chunk: Chunk) -> dict:
+    rel_path = chunk.rel_path
     return {
         "chunk_id": chunk.id,
         "document_id": chunk.document_id,
-        "rel_path": chunk.rel_path,
+        "rel_path": rel_path,
+        # parent folder (posix), for metadata filtering; "" for vault-root notes
+        "folder": rel_path.rsplit("/", 1)[0] if "/" in rel_path else "",
         "heading_path": chunk.heading_path,
         "text": chunk.text,
         "tags": chunk.tags,
@@ -80,6 +84,7 @@ def ensure_collection(
                     size=dim, distance=models.Distance.COSINE
                 )
             },
+            sparse_vectors_config={SPARSE_VECTOR: models.SparseVectorParams()},
         )
 
 
@@ -88,20 +93,30 @@ def _batches(items: list[Chunk], size: int) -> Iterator[list[Chunk]]:
         yield items[start : start + size]
 
 
+def _sparse(vector: SparseVector) -> models.SparseVector:
+    return models.SparseVector(indices=vector.indices, values=vector.values)
+
+
 def upsert_chunks(
     client: QdrantClient,
     collection: str,
     chunks: list[Chunk],
     vectors: Iterable[list[float]],
+    sparse_vectors: Iterable[SparseVector] | None = None,
 ) -> None:
-    points = [
-        models.PointStruct(
-            id=point_id(chunk.id),
-            vector={DENSE_VECTOR: vector},
-            payload=chunk_to_payload(chunk),
+    sparse_list = list(sparse_vectors) if sparse_vectors is not None else None
+    points = []
+    for index, (chunk, vector) in enumerate(zip(chunks, vectors)):
+        named = {DENSE_VECTOR: vector}
+        if sparse_list is not None:
+            named[SPARSE_VECTOR] = _sparse(sparse_list[index])
+        points.append(
+            models.PointStruct(
+                id=point_id(chunk.id),
+                vector=named,
+                payload=chunk_to_payload(chunk),
+            )
         )
-        for chunk, vector in zip(chunks, vectors)
-    ]
     if points:
         client.upsert(collection, points=points)
 
@@ -115,9 +130,10 @@ def index_chunks(
     recreate: bool = True,
     batch_size: int = 64,
 ) -> int:
-    """Embed and upsert chunks; returns the number of points written."""
+    """Embed (dense + sparse) and upsert chunks; returns points written."""
     ensure_collection(client, collection, embedder.dim, recreate=recreate)
     for batch in _batches(chunks, batch_size):
-        vectors = embedder.embed([embedding_text(chunk) for chunk in batch])
-        upsert_chunks(client, collection, batch, vectors)
+        texts = [embedding_text(chunk) for chunk in batch]
+        dense, sparse = embedder.embed_both(texts)
+        upsert_chunks(client, collection, batch, dense, sparse)
     return len(chunks)

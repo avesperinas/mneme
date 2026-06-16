@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     embed_device: str = "auto"
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
     rerank_device: str = "auto"
+    rerank_enabled: bool = True
 
     vault_path: str = ""
 

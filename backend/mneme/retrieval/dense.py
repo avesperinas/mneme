@@ -13,13 +13,35 @@ from dataclasses import dataclass
 from mneme_ingest.embed import Embedder
 from mneme_ingest.models import Chunk
 from mneme_ingest.vectorstore import DENSE_VECTOR, payload_to_chunk
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 
 
 @dataclass(slots=True)
 class RetrievedChunk:
     chunk: Chunk
     score: float
+
+
+def query_dense(
+    client: QdrantClient,
+    collection: str,
+    vector: list[float],
+    top_k: int,
+    query_filter: models.Filter | None = None,
+) -> list[RetrievedChunk]:
+    """Dense search from an already-embedded query vector."""
+    response = client.query_points(
+        collection,
+        query=vector,
+        using=DENSE_VECTOR,
+        limit=top_k,
+        with_payload=True,
+        query_filter=query_filter,
+    )
+    return [
+        RetrievedChunk(chunk=payload_to_chunk(point.payload), score=point.score)
+        for point in response.points
+    ]
 
 
 def dense_search(
@@ -29,19 +51,10 @@ def dense_search(
     embedder: Embedder,
     *,
     top_k: int = 5,
+    query_filter: models.Filter | None = None,
 ) -> list[RetrievedChunk]:
     vector = embedder.embed([query])[0]
-    response = client.query_points(
-        collection,
-        query=vector,
-        using=DENSE_VECTOR,
-        limit=top_k,
-        with_payload=True,
-    )
-    return [
-        RetrievedChunk(chunk=payload_to_chunk(point.payload), score=point.score)
-        for point in response.points
-    ]
+    return query_dense(client, collection, vector, top_k, query_filter)
 
 
 def format_context(retrieved: list[RetrievedChunk]) -> str:

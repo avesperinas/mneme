@@ -26,13 +26,14 @@ from mneme.rag.synthesize import (
     stream_answer_tokens,
     synthesize_answer,
 )
-from mneme.retrieval.dense import dense_search
+from mneme.retrieval.pipeline import retrieve
 
 if TYPE_CHECKING:
     from mneme_ingest.embed import Embedder
     from qdrant_client import QdrantClient
 
     from mneme.llm.client import LLMClient
+    from mneme.retrieval.rerank import Reranker
 
 _SNIPPET_CHARS = 240
 
@@ -65,14 +66,19 @@ def create_app(
     embedder: Embedder | None = None,
     qdrant_client: QdrantClient | None = None,
     llm_client: LLMClient | None = None,
+    reranker: Reranker | None = None,
     collection: str | None = None,
     cors_origins: list[str] | None = None,
+    rerank: bool | None = None,
+    default_mode: str = "hybrid",
+    candidate_k: int = 20,
     top_k: int = 5,
     min_score: float = 0.0,
 ) -> FastAPI:
     settings = settings or get_settings()
     collection = collection or settings.qdrant_collection
     cors_origins = cors_origins if cors_origins is not None else settings.cors_origins
+    rerank_on = settings.rerank_enabled if rerank is None else rerank
 
     if embedder is None:
         from mneme_ingest.embed import BGEM3Embedder
@@ -88,6 +94,11 @@ def create_app(
         llm_client = OpenAICompatClient(
             settings.llm_base_url, settings.llm_model, settings.llm_api_key
         )
+    if rerank_on and reranker is None:
+        from mneme.retrieval.rerank import BGEReranker
+
+        reranker = BGEReranker(device=settings.rerank_device)
+    active_reranker = reranker if rerank_on else None
 
     app = FastAPI(title="Mneme")
     app.add_middleware(
@@ -100,15 +111,23 @@ def create_app(
     @app.post("/query", response_model=QueryResponse)
     async def query(request: QueryRequest) -> QueryResponse:
         # Translate infrastructure failures into clear HTTP errors rather than an
-        # opaque 500: 503 when the vector store is unreachable, 502 when the LLM
-        # call fails (e.g. engine down or model not pulled).
+        # opaque 500: 503 when retrieval fails, 502 when the LLM call fails.
+        mode = request.mode or default_mode
         try:
-            retrieved = dense_search(
-                qdrant_client, collection, request.question, embedder, top_k=top_k
+            retrieved = retrieve(
+                mode,
+                qdrant_client,
+                collection,
+                request.question,
+                embedder,
+                reranker=active_reranker,
+                filters=request.filters,
+                candidate_k=candidate_k,
+                top_k=top_k,
             )
         except Exception as exc:
             raise HTTPException(
-                status_code=503, detail=f"vector store unavailable: {exc}"
+                status_code=503, detail=f"retrieval failed: {exc}"
             ) from exc
         try:
             answer = await synthesize_answer(
@@ -119,28 +138,36 @@ def create_app(
                 status_code=502, detail=f"LLM request failed: {exc}"
             ) from exc
         return QueryResponse(
-            answer=answer.text, sources=_to_sources(answer.used), mode="naive"
+            answer=answer.text, sources=_to_sources(answer.used), mode=mode
         )
 
     @app.get("/query/stream")
     async def query_stream(question: str, mode: str | None = None) -> StreamingResponse:
-        # Retrieval runs before the stream opens, so a vector-store failure is a
+        # Retrieval runs before the stream opens, so a retrieval failure is a
         # clean 503 rather than a half-open stream. The LLM call is inside the
         # stream, so its failure surfaces as a terminal SSE "error" event.
+        active_mode = mode or default_mode
         try:
-            retrieved = dense_search(
-                qdrant_client, collection, question, embedder, top_k=top_k
+            retrieved = retrieve(
+                active_mode,
+                qdrant_client,
+                collection,
+                question,
+                embedder,
+                reranker=active_reranker,
+                candidate_k=candidate_k,
+                top_k=top_k,
             )
         except Exception as exc:
             raise HTTPException(
-                status_code=503, detail=f"vector store unavailable: {exc}"
+                status_code=503, detail=f"retrieval failed: {exc}"
             ) from exc
         relevant = select_relevant(retrieved, min_score)
 
         async def events():
             if not relevant:
                 yield _sse("token", {"text": NOT_FOUND_MESSAGE})
-                yield _sse("sources", {"sources": [], "mode": "naive"})
+                yield _sse("sources", {"sources": [], "mode": active_mode})
                 return
             try:
                 async for token in stream_answer_tokens(llm_client, question, relevant):
@@ -150,7 +177,7 @@ def create_app(
                 return
             payload = {
                 "sources": [s.model_dump() for s in _to_sources(relevant)],
-                "mode": "naive",
+                "mode": active_mode,
             }
             yield _sse("sources", payload)
 
